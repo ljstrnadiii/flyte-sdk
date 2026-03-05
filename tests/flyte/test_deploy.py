@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import replace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 import flyte
 from flyte._deploy import _get_documentation_entity, _update_interface_inputs_and_outputs_docstring
 from flyte._docstring import Docstring
+from flyte._initialize import _init_for_testing
 from flyte._internal.runtime.types_serde import transform_native_to_typed_interface
 from flyte.models import NativeInterface
 
@@ -181,3 +184,28 @@ def test_update_interface_mismatched_names():
     result_inputs = {entry.key: entry.value for entry in result.inputs.variables}
     assert result_inputs["x"].description == ""
     assert result_inputs["y"].description == ""
+
+
+@pytest.mark.asyncio
+@patch("flyte._code_bundle.build_code_bundle", new_callable=AsyncMock)
+async def test_apply_copy_style_none_skips_code_bundle(mock_build_code_bundle: AsyncMock):
+    from flyte._deploy import DeploymentPlan, apply
+
+    await _init_for_testing(project="p", domain="d")
+
+    deployment_plan = DeploymentPlan(envs={}, version="v1")
+    await apply(deployment_plan=deployment_plan, copy_style="none", dryrun=True)
+
+    mock_build_code_bundle.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_copy_style_none_requires_version():
+    from flyte._deploy import DeploymentPlan, apply
+    from flyte.errors import DeploymentError
+
+    await _init_for_testing(project="p", domain="d")
+
+    deployment_plan = DeploymentPlan(envs={}, version=None)
+    with pytest.raises(DeploymentError, match="Version must be set when copy_style is none"):
+        await apply(deployment_plan=deployment_plan, copy_style="none", dryrun=True)
